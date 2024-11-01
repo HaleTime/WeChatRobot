@@ -21,6 +21,7 @@ from configuration import Config
 from constants import ChatType
 from job_mgmt import Job
 
+
 __version__ = "39.2.4.0"
 
 
@@ -28,12 +29,12 @@ class Robot(Job):
     """个性化自己的机器人
     """
 
-    def __init__(self, config: Config, wcf: Wcf, chat_type: int) -> None:
-        self.wcf = wcf
+    def __init__(self, config: Config, chat_type: int) -> None:
+        self.wcf = None
         self.config = config
         self.LOG = logging.getLogger("Robot")
-        self.wxid = self.wcf.get_self_wxid()
-        self.allContacts = self.getAllContacts()
+        self.wxid = None
+        self.allContacts = None
 
         if ChatType.is_in_chat_types(chat_type):
             if chat_type == ChatType.TIGER_BOT.value and TigerBot.value_check(self.config.TIGERBOT):
@@ -68,7 +69,10 @@ class Robot(Job):
                 self.LOG.warning("未配置模型")
                 self.chat = None
 
-        self.LOG.info(f"已选择: {self.chat}")
+    def launch(self, wcf: Wcf) -> None:
+        self.wcf = wcf
+        self.wxid = self.wcf.get_self_wxid()
+        self.allContacts = self.getAllContacts()
 
     @staticmethod
     def value_check(args: dict) -> bool:
@@ -117,7 +121,7 @@ class Robot(Job):
             rsp = "你@我干嘛？"
         else:  # 接了 ChatGPT，智能回复
             q = re.sub(r"@.*?[\u2005|\s]", "", msg.content).replace(" ", "")
-            rsp = self.chat.get_answer(q, (msg.roomid if msg.from_group() else msg.sender))
+            rsp = self.chat.get_answer(q, (msg.roomid if msg.from_group() else msg.sender), msg.sender, from_group=msg.from_group())
 
         if rsp:
             if msg.from_group():
@@ -214,7 +218,7 @@ class Robot(Job):
                     ats += f" @{self.wcf.get_alias_in_chatroom(wxid, receiver)}"
 
         # {msg}{ats} 表示要发送的消息内容后面紧跟@，例如 北京天气情况为：xxx @张三
-        if ats == "":
+        if not ats:
             self.LOG.info(f"To {receiver}: {msg}")
             self.wcf.send_text(f"{msg}", receiver, at_list)
         else:
@@ -263,3 +267,6 @@ class Robot(Job):
         news = News().get_important_news()
         for r in receivers:
             self.sendTextMsg(news, r)
+
+
+_robot = Robot(Config(), 6)
