@@ -1,13 +1,11 @@
-from .remindme import remind_me_schema, remind_me
+from .remind import remind_me, remind_me_tool
 
-tools_schema = [
-    {
-        "type": "function",
-        "function": remind_me_schema
-    }
+
+tools = [
+    remind_me_tool
 ]
 
 __all__ = [
-    tools_schema,
     remind_me,
+    tools,
 ]

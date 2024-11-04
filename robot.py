@@ -20,7 +20,9 @@ from base.func_xinghuo_web import XinghuoWeb
 from configuration import Config
 from constants import ChatType
 from job_mgmt import Job
-
+from base.intent import intent_identify
+from tools.remind import remind_me
+from tools.chat import chat
 
 __version__ = "39.2.4.0"
 
@@ -35,6 +37,10 @@ class Robot(Job):
         self.LOG = logging.getLogger("Robot")
         self.wxid = None
         self.allContacts = None
+        self.tools = {
+            "remind_me": remind_me,
+            "other": chat,
+        }
 
         if ChatType.is_in_chat_types(chat_type):
             if chat_type == ChatType.TIGER_BOT.value and TigerBot.value_check(self.config.TIGERBOT):
@@ -114,26 +120,6 @@ class Robot(Job):
 
         return status
 
-    def toChitchat(self, msg: WxMsg) -> bool:
-        """闲聊，接入 ChatGPT
-        """
-        if not self.chat:  # 没接 ChatGPT，固定回复
-            rsp = "你@我干嘛？"
-        else:  # 接了 ChatGPT，智能回复
-            q = re.sub(r"@.*?[\u2005|\s]", "", msg.content).replace(" ", "")
-            rsp = self.chat.get_answer(q, (msg.roomid if msg.from_group() else msg.sender), msg.sender, from_group=msg.from_group())
-
-        if rsp:
-            if msg.from_group():
-                self.sendTextMsg(rsp, msg.roomid, msg.sender)
-            else:
-                self.sendTextMsg(rsp, msg.sender)
-
-            return True
-        else:
-            self.LOG.error(f"无法从 ChatGPT 获得答案")
-            return False
-
     def processMsg(self, msg: WxMsg) -> None:
         """当接收到消息的时候，会调用本方法。如果不实现本方法，则打印原始消息。
         此处可进行自定义发送的内容,如通过 msg.content 关键字自动获取当前天气信息，并发送到对应的群组@发送者
@@ -145,17 +131,16 @@ class Robot(Job):
 
         # 群聊消息
         if msg.from_group():
-            # 如果在群里被 @
             if msg.roomid not in self.config.GROUPS:  # 不在配置的响应的群列表里，忽略
                 return
-
-            if msg.is_at(self.wxid):  # 被@
-                self.toAt(msg)
-
-            else:  # 其他消息
-                self.toChengyu(msg)
-
-            return  # 处理完群聊信息，后面就不需要处理了
+            if msg.type == 10000 and "拍了拍我的钱包" in msg.content:
+                time.sleep(1)
+                self.wcf.send_pat_msg(msg.roomid, msg.sender)
+                return
+            if not msg.is_at(self.wxid):
+                return
+            # 如果在群里被 @
+            msg.content = re.sub(r"@.*?[\u2005|\s]", "", msg.content).replace(" ", "")
 
         # 非群聊信息，按消息类型进行处理
         if msg.type == 37:  # 好友请求
@@ -171,19 +156,9 @@ class Robot(Job):
                     self.config.reload()
                     self.LOG.info("已更新")
             else:
-                self.toChitchat(msg)  # 闲聊
-
-    def onMsg(self, msg: WxMsg) -> int:
-        try:
-            self.LOG.info(msg)  # 打印信息
-            self.processMsg(msg)
-        except Exception as e:
-            self.LOG.error(e)
-
-        return 0
-
-    def enableRecvMsg(self) -> None:
-        self.wcf.enable_recv_msg(self.onMsg)
+                # self.toChitchat(msg)  # 闲聊
+                tool_name = intent_identify(msg)
+                return self.tools[tool_name](msg)
 
     def enableReceivingMsg(self) -> None:
         def innerProcessMsg(wcf: Wcf):
@@ -199,6 +174,16 @@ class Robot(Job):
 
         self.wcf.enable_receiving_msg()
         Thread(target=innerProcessMsg, name="GetMessage", args=(self.wcf,), daemon=True).start()
+
+    def reply_text_msg(self, msg: WxMsg, message: str) -> None:
+        if msg.from_group():
+            ats = f" @{self.wcf.get_alias_in_chatroom(msg.sender, msg.roomid)}"
+            self.LOG.info(f"To {msg.roomid}: {ats}\r{message}")
+            self.wcf.send_text(f"{ats}\n\n{message}", msg.roomid, msg.sender)
+
+        else:
+            self.LOG.info(f"To {msg.sender}: {message}")
+            self.wcf.send_text(f"{message}", msg.sender)
 
     def sendTextMsg(self, msg: str, receiver: str, at_list: str = "") -> None:
         """ 发送消息

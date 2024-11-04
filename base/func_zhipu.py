@@ -20,6 +20,17 @@ class ZhiPu:
     def __repr__(self):
         return 'ZhiPu'
 
+    def completions(self, messages):
+        response = self.client.chat.completions.create(
+            model=self.model,
+            messages=messages,
+        )
+        resp_msg = response.choices[0].message
+        print(resp_msg)
+        answer = resp_msg.content
+        return answer
+
+
     def get_answer(self, msg: str, receiver: str, at_list: str = "", **kwargs) -> str:
         self._update_message(receiver, str(msg), "user")
 
@@ -27,7 +38,7 @@ class ZhiPu:
         response = self.client.chat.completions.create(
             model=self.model,
             messages=self.converstion_list[receiver],
-            tools=tools.tools_schema,
+            # tools=tools.tools_schema,
         )
 
         resp_msg = response.choices[0].message
@@ -77,11 +88,23 @@ class ZhiPu:
 
 if __name__ == "__main__":
     from configuration import Config
+    from datetime import datetime
 
     config = Config().ZhiPu
     if not config:
         exit(0)
 
+    date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     zhipu = ZhiPu(config)
-    rsp = zhipu.get_answer("5秒后提醒我吃饭", 1)
+    prompt = f"""根据下面这句话提取出时间和提醒的内容，用json的形式返回
+对话内容:
+5秒后提醒我吃饭了
+
+返回格式:
+{{
+    "time": <当前时刻为{date},要提取的时间, 格式为yyyy-MM-dd hh:mm>,
+    "msg": <提醒内容>
+}}
+"""
+    rsp = zhipu.get_answer(prompt, 1)
     print(rsp)
