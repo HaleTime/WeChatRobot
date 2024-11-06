@@ -23,6 +23,7 @@ from job_mgmt import Job
 from base.intent import intent_identify
 from tools.remind import remind_me
 from tools.chat import chat
+from tools.knowledge import validate_format, learn
 
 __version__ = "39.2.4.0"
 
@@ -141,6 +142,9 @@ class Robot(Job):
                 return
             # 如果在群里被 @
             msg.content = re.sub(r"@.*?[\u2005|\s]", "", msg.content).replace(" ", "")
+
+        if validate_format(msg.content):
+            return learn(msg)
 
         # 非群聊信息，按消息类型进行处理
         if msg.type == 37:  # 好友请求

@@ -15,7 +15,6 @@ def intent_identify(msg: WxMsg):
     print(f"{receiver}: {message}")
 
     conversation = conversation_list.get(receiver, Conversation(receiver=receiver, from_group=msg.from_group()))
-    conversation.update_message(message, receiver)
     prompt_messages = conversation.get_prompt_messages()
 
     prompt = f"""根据下面的步骤推理问题:
@@ -27,7 +26,6 @@ def intent_identify(msg: WxMsg):
 {msg.content}
 
 tools:
-{tools}
 
 按照下面json返回结果:
 {{"name": <tool的name>"}}
@@ -38,5 +36,8 @@ tools:
 
     llm = LlmInvoker(prompt_messages)
     result = llm.json()
+    tool_result = result.get('name', 'other')
+    conversation.update_message(message, receiver, tool=tool_result)
+    conversation.change_tool(tool_result)
     print(f"意图识别结果: {result}")
-    return result.get('name', 'other')
+    return tool_result
